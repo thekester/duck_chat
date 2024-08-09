@@ -1,8 +1,12 @@
-import readline
 import sys
+
+if sys.platform == 'win32':
+    import pyreadline3 as readline
+else:
+    import readline
+
 import tomllib
 from pathlib import Path
-
 from rich.console import Console
 from rich.markdown import Markdown
 

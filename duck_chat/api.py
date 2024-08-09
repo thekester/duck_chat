@@ -1,6 +1,5 @@
 from types import TracebackType
-from typing import Self
-
+from typing import TYPE_CHECKING
 import aiohttp
 import msgspec
 from fake_useragent import UserAgent
@@ -12,6 +11,8 @@ from .exceptions import (
 )
 from .models import History, ModelType
 
+if TYPE_CHECKING:
+    from .api import DuckChat
 
 class DuckChat:
     def __init__(
@@ -25,29 +26,35 @@ class DuckChat:
         else:
             self.user_agent = user_agent.random  # type: ignore
 
-        self._session = session or aiohttp.ClientSession(
-            headers={
-                "Host": "duckduckgo.com",
-                "Accept": "text/event-stream",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Referer": "https://duckduckgo.com/",
-                "User-Agent": self.user_agent,
-                "DNT": "1",
-                "Sec-GPC": "1",
-                "Connection": "keep-alive",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-                "TE": "trailers",
-            }
-        )
+        self._session = session
         self.vqd: list[str | None] = []
         self.history = History(model, [])
         self.__encoder = msgspec.json.Encoder()
         self.__decoder = msgspec.json.Decoder()
 
-    async def __aenter__(self) -> Self:
+    async def init_session(self):
+        """Initialize the aiohttp session if it hasn't been initialized yet."""
+        if not self._session:
+            self._session = aiohttp.ClientSession(
+                headers={
+                    "Host": "duckduckgo.com",
+                    "Accept": "text/event-stream",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Referer": "https://duckduckgo.com/",
+                    "User-Agent": self.user_agent,
+                    "DNT": "1",
+                    "Sec-GPC": "1",
+                    "Connection": "keep-alive",
+                    "Sec-Fetch-Dest": "empty",
+                    "Sec-Fetch-Mode": "cors",
+                    "Sec-Fetch-Site": "same-origin",
+                    "TE": "trailers",
+                }
+            )
+
+    async def __aenter__(self) -> "DuckChat":
+        await self.init_session()
         return self
 
     async def __aexit__(
@@ -56,10 +63,12 @@ class DuckChat:
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ) -> None:
-        await self._session.__aexit__(exc_type, exc_value, traceback)
+        if self._session:
+            await self._session.__aexit__(exc_type, exc_value, traceback)
 
     async def get_vqd(self) -> None:
         """Get new x-vqd-4 token"""
+        await self.init_session()
         async with self._session.get(
             "https://duckduckgo.com/duckchat/v1/status", headers={"x-vqd-accept": "1"}
         ) as response:
@@ -77,6 +86,7 @@ class DuckChat:
 
     async def get_answer(self) -> str:
         """Get message answer from chatbot"""
+        await self.init_session()
         async with self._session.post(
             "https://duckduckgo.com/duckchat/v1/chat",
             headers={

@@ -1,55 +1,97 @@
 # A DuckDuckGo AI chat client written in python
 
-A python-implemented DuckDuckGo AI chat client with model selection and dialog history during usage. 
+A python-implemented DuckDuckGo AI chat client with model selection and dialog history during usage.
 
-> Based on the ideas of [duck-hey](https://github.com/b1ek/hey)
+> Based on the ideas of [duck-hey](https://github.com/b1ek/hey) and [duck-chat](https://github.com/mrgick/duck_chat)
 
 ## Disclaimer
+
 By using this client you accept [DuckDuckGo AI Chat ToS](https://duckduckgo.com/aichat/privacy-terms)
 
-
 ## Installation
-1. Install [python 3.12](https://www.python.org/downloads/)
+
+### Prerequisites
+
+- [Python 3.12](https://www.python.org/downloads/)
+- [Conda](https://docs.conda.io/en/latest/miniconda.html) (optional but recommended for isolated environments)
+
+### Option 1: Using Conda
+
+1. **Create a Conda environment**
+
+   ```bash
+    conda create --name duck_chat_env python=3.10
+   conda activate duck_chat_env
+   ```
+
+   ```
+
+   ```
+
+``pip install -U .``
+
+Install manually:
+
+    Clone the repository:
+
+``git clone https://github.com/mrgick/duckduckgo-chat-ai.git && cd duckduckgo-chat-ai``
+
+Install the package:
+
+``pip install -U .``
+
+Option 2: Without Conda
+
+    Install Python 3.12
 
 2. Create python venv (optionally)
 
- ```bash
+```bash
  python -m venv .venv && source .venv/bin/activate
- ```
+```
 
 3. Install package
 
    - Install auto
+
    ```bash
    pip install -U https://github.com/mrgick/duckduckgo-chat-ai/archive/master.zip
    ```
+
    - Install manually
+
      1. Clone repo
 
-       ```bash
-       git clone https://github.com/mrgick/duckduckgo-chat-ai.git && cd duckduckgo-chat-ai
-       ```
+     ```bash
+     git clone https://github.com/mrgick/duckduckgo-chat-ai.git && cd duckduckgo-chat-ai
+     ```
+
      2. Install package
 
-       ```bash
-       pip install -U .
-       ```
+     ```bash
+     pip install -U .
+     ```
 
 ## Usage
+
 - Using terminal
+
 ```bash
 python -m duck_chat
 ```
+
 or
+
 ```
 duck_chat
 ```
 
-> P.S. You can use hey config ```".config/hey/conf.toml"``` Thanks [k-aito](https://github.com/mrgick/duckduckgo-chat-ai/pull/1)
-
+> P.S. You can use hey config ``".config/hey/conf.toml"`` Thanks [k-aito](https://github.com/mrgick/duckduckgo-chat-ai/pull/1)
 
 - Using as library
+
 ```py
+
 import asyncio
 from duck_chat import DuckChat
 
@@ -60,4 +102,9 @@ async def main():
         print(await chat.ask_question("6+6?"))
 
 asyncio.run(main())
+
 ```
+
+To make a Windows executable
+
+- pyinstaller --name duck_chat --onefile --windowed --collect-datas=fake_useragent __main__.py
