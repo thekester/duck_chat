@@ -4,6 +4,10 @@ A python-implemented DuckDuckGo AI chat client with model selection and dialog h
 
 > Based on the ideas of [duck-hey](https://github.com/b1ek/hey) and [duck-chat](https://github.com/mrgick/duck_chat)
 
+## GUI Interface
+
+![DuckDuckGo AI Chat Client GUI](images/guichat.png)
+
 ## Disclaimer
 
 By using this client you accept [DuckDuckGo AI Chat ToS](https://duckduckgo.com/aichat/privacy-terms)
