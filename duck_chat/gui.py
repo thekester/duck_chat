@@ -10,25 +10,26 @@ from kivy.uix.widget import Widget
 from kivy.graphics import Color, RoundedRectangle
 from kivy.clock import Clock
 from kivy.animation import Animation
+from datetime import datetime, timedelta
 import asyncio
 import threading
 from duck_chat.api import DuckChat, DuckChatException
-
 from .models import ModelType
-
 import sys
 import os
 
 def resource_path(relative_path):
     """Get the absolute path to the resource, works for PyInstaller"""
     try:
-        # PyInstaller creates a temporary folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
-        # Otherwise, assume we're running in development mode
         base_path = os.path.abspath(os.path.dirname(__file__))
-
     return os.path.join(base_path, relative_path)
+
+def get_current_datetime(days_offset=0):
+    """Function to get the current date and time with an optional offset in days"""
+    target_date = datetime.now() + timedelta(days=days_offset)
+    return target_date.strftime("%Y-%m-%d %H:%M:%S")
 
 class ChatApp(App):
     def build(self):
@@ -165,19 +166,39 @@ class ChatApp(App):
 
     def initialize_chat_client(self):
         selected_model = self.model_selector.text
-        model_type = ModelType(selected_model)
-        self.chat_client = DuckChat(model=model_type)
+
+        if selected_model == 'Select Model':
+            self.display_message("Please select a model from the dropdown before proceeding.", user=False)
+            return
+
+        try:
+            model_type = ModelType(selected_model)
+            self.chat_client = DuckChat(model=model_type)
+        except ValueError:
+            self.display_message("Invalid model selected. Please select a valid model.", user=False)
 
     def handle_chat_response(self, message):
-        async def get_response():
-            try:
-                await self.chat_client.init_session()
-                response = await self.chat_client.ask_question(message)
-                self.display_message(f"AI: {response}", user=False)
-            except DuckChatException as e:
-                self.display_message(f"Error: {str(e)}", user=False)
+        message_lower = message.lower()
 
-        threading.Thread(target=lambda: self.loop.run_until_complete(get_response())).start()
+        if "tomorrow" in message_lower:
+            future_datetime = get_current_datetime(days_offset=1)
+            self.display_message(f"AI: The date and time for tomorrow is: {future_datetime}", user=False)
+        elif "yesterday" in message_lower:
+            past_datetime = get_current_datetime(days_offset=-1)
+            self.display_message(f"AI: The date and time for yesterday was: {past_datetime}", user=False)
+        elif "today" in message_lower:
+            current_datetime = get_current_datetime()
+            self.display_message(f"AI: The current date and time is: {current_datetime}", user=False)
+        else:
+            async def get_response():
+                try:
+                    await self.chat_client.init_session()
+                    response = await self.chat_client.ask_question(message)
+                    self.display_message(f"AI: {response}", user=False)
+                except DuckChatException as e:
+                    self.display_message(f"Error: {str(e)}", user=False)
+
+            threading.Thread(target=lambda: self.loop.run_until_complete(get_response())).start()
 
     def on_stop(self):
         # This method is called when the application is closed.

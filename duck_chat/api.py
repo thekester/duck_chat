@@ -156,5 +156,6 @@ class DuckChat:
         return message
     
     async def close_session(self):
-        if self.session is not None:
-            await self.session.close()
+        if self._session is not None:
+            await self._session.close()
+            self._session = None  # Reset the session to None after closing
