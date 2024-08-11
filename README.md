@@ -8,6 +8,9 @@ A python-implemented DuckDuckGo AI chat client with model selection and dialog h
 
 ![DuckDuckGo AI Chat Client GUI](duck_chat/images/guichat.png)
 
+![DuckDuckGo AI Chat Client GUI](duck_chat/images/guichatdates.png)
+
+
 ## Disclaimer
 
 By using this client you accept [DuckDuckGo AI Chat ToS](https://duckduckgo.com/aichat/privacy-terms)
@@ -111,4 +114,6 @@ asyncio.run(main())
 
 To make a Windows executable
 
-- pyinstaller --name duck_chat --onefile --windowed --collect-datas=fake_useragent __main__.py
+- pyinstaller --name duck_chat --onefile --windowed --collect-datas=fake_useragent --add-data "images;images" __main__.py
+
+
