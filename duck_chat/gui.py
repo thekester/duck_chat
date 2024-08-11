@@ -9,10 +9,26 @@ from kivy.uix.image import Image
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, RoundedRectangle
 from kivy.clock import Clock
+from kivy.animation import Animation
 import asyncio
 import threading
-from .api import DuckChat, DuckChatException
+from duck_chat.api import DuckChat, DuckChatException
+
 from .models import ModelType
+
+import sys
+import os
+
+def resource_path(relative_path):
+    """Get the absolute path to the resource, works for PyInstaller"""
+    try:
+        # PyInstaller creates a temporary folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # Otherwise, assume we're running in development mode
+        base_path = os.path.abspath(os.path.dirname(__file__))
+
+    return os.path.join(base_path, relative_path)
 
 class ChatApp(App):
     def build(self):
@@ -50,7 +66,7 @@ class ChatApp(App):
 
         # Send button with a specific size
         self.send_button = Button(
-            background_normal='images/send_icon.png',
+            background_normal=resource_path('images/send_icon.png'),
             size_hint=(None, None),
             size=(46, 37)
         )
@@ -62,6 +78,9 @@ class ChatApp(App):
         return self.layout
 
     def send_message(self, instance):
+        # Animate the send button
+        self.animate_send_button()
+
         if not self.chat_client:
             self.initialize_chat_client()
 
@@ -114,19 +133,35 @@ class ChatApp(App):
         if user:
             message_layout.add_widget(Widget())  # Empty space on the left for user messages
             message_layout.add_widget(label)
-            message_layout.add_widget(Image(source='images/human.png', size_hint=(None, None), size=(25, 27)))
+            message_layout.add_widget(Image(source=resource_path('images/human.png'), size_hint=(None, None), size=(25, 27)))
         else:
-            message_layout.add_widget(Image(source='images/aichatbot25x26.png', size_hint=(None, None), size=(44, 44)))
+            message_layout.add_widget(Image(source=resource_path('images/aichatbot25x26.png'), size_hint=(None, None), size=(44, 44)))
             message_layout.add_widget(label)
             message_layout.add_widget(Widget())  # Empty space on the right for bot messages
 
         # Set the size of the message_layout to ensure it fits the content properly
         message_layout.height = label.height + 20  # Adding padding to prevent overlap
 
+        # Add the message layout to the chat display
         self.chat_display_layout.add_widget(message_layout)
         self.chat_display_layout.height += message_layout.height  # Increase layout height
         self.chat_display.scroll_to(message_layout)
 
+        # Add animation here
+        self.animate_message(message_layout)
+
+    def animate_message(self, message_widget):
+        # The animation starts with a reduced size to 0 and opacity to 0
+        animation = Animation(size=(message_widget.width, 0), opacity=0, duration=0) + \
+                    Animation(size=(message_widget.width, message_widget.height), opacity=1, duration=0.3)
+
+        # Start the animation on the message widget
+        animation.start(message_widget)
+
+    def animate_send_button(self):
+        animation = Animation(size=(self.send_button.width * 0.9, self.send_button.height * 0.9), duration=0.1) + \
+                    Animation(size=(self.send_button.width, self.send_button.height), duration=0.1)
+        animation.start(self.send_button)
 
     def initialize_chat_client(self):
         selected_model = self.model_selector.text
@@ -143,6 +178,15 @@ class ChatApp(App):
                 self.display_message(f"Error: {str(e)}", user=False)
 
         threading.Thread(target=lambda: self.loop.run_until_complete(get_response())).start()
+
+    def on_stop(self):
+        # This method is called when the application is closed.
+        if self.chat_client:
+            asyncio.run(self.chat_client.close_session())  # Close the session asynchronously
+
+        if self.loop.is_running():
+            self.loop.stop()
+            self.loop.close()
 
 if __name__ == "__main__":
     ChatApp().run()

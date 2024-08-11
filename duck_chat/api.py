@@ -154,3 +154,7 @@ class DuckChat:
         self.history.add_answer(message)
 
         return message
+    
+    async def close_session(self):
+        if self.session is not None:
+            await self.session.close()
