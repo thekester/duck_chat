@@ -1,3 +1,5 @@
-__version__ = "v1.2.1"
-from .api import DuckChat  # noqa
-from .models import ModelType  # noqa
+__version__ = "v1.3.3"
+from .api import DuckChat
+from .models import ModelType, SavedHistory
+
+__all__ = ["DuckChat", "ModelType", "SavedHistory"]

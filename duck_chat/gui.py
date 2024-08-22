@@ -10,13 +10,22 @@ from kivy.uix.widget import Widget
 from kivy.graphics import Color, RoundedRectangle
 from kivy.clock import Clock
 from kivy.animation import Animation
+from kivy.uix.recycleview import RecycleView
+from kivy.uix.recycleboxlayout import RecycleBoxLayout
+from kivy.uix.recycleview.views import RecycleDataViewBehavior
+from kivy.uix.behaviors import FocusBehavior
+from kivy.uix.recycleview.layout import LayoutSelectionBehavior
+from kivy.properties import BooleanProperty
+from kivy.metrics import dp
 from datetime import datetime, timedelta
 import asyncio
 import threading
-from duck_chat.api import DuckChat, DuckChatException
-from .models import ModelType
-import sys
 import os
+import sys
+import aiohttp
+
+from duck_chat.api import DuckChat, DuckChatException
+from .models.models import ModelType, Role, SavedHistory, History
 
 def resource_path(relative_path):
     """Get the absolute path to the resource, works for PyInstaller"""
@@ -31,33 +40,95 @@ def get_current_datetime(days_offset=0):
     target_date = datetime.now() + timedelta(days=days_offset)
     return target_date.strftime("%Y-%m-%d %H:%M:%S")
 
+class SelectableRecycleBoxLayout(FocusBehavior, LayoutSelectionBehavior, RecycleBoxLayout):
+    ''' Adds selection and focus behavior to the view. '''
+
+class SelectableLabel(RecycleDataViewBehavior, Label):
+    ''' Add selection support to the Label '''
+    index = None
+    selected = BooleanProperty(False)
+    selectable = BooleanProperty(True)
+
+    def refresh_view_attrs(self, rv, index, data):
+        ''' Catch and handle the view changes '''
+        self.index = index
+        return super(SelectableLabel, self).refresh_view_attrs(rv, index, data)
+
+    def on_touch_down(self, touch):
+        ''' Add selection on touch down '''
+        if super(SelectableLabel, self).on_touch_down(touch):
+            return True
+        if self.collide_point(*touch.pos) and self.selectable:
+            return self.parent.select_with_touch(self.index, touch)
+        return False
+
+    def apply_selection(self, rv, index, is_selected):
+        ''' Respond to the selection of items in the view. '''
+        self.selected = is_selected
+        if is_selected:
+            rv.load_conversation(rv.data[index]['text'])
+
+class HistoryRecycleView(RecycleView):
+    def __init__(self, **kwargs):
+        super(HistoryRecycleView, self).__init__(**kwargs)
+        self.data = []
+
+        # Create and add the layout manager as a child directly within the RecycleView
+        layout_manager = SelectableRecycleBoxLayout(
+            default_size=(None, dp(56)),
+            default_size_hint=(1, None),
+            size_hint_y=None,
+            height=dp(56) * len(self.data),  # Replace self.minimum_height with a calculated height
+            orientation='vertical'
+        )
+        self.add_widget(layout_manager)
+        self.layout_manager = layout_manager
+
+    def load_conversation(self, conv_id):
+        self.parent.parent.load_conversation(conv_id)
+
 class ChatApp(App):
+    
     def build(self):
+        # Initialize an event loop to be used for asyncio tasks
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
         self.chat_client = None
 
-        self.layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        # Main layout with two panels: history and chat
+        main_layout = BoxLayout(orientation='horizontal')
 
+        # History side panel
+        self.history_view = HistoryRecycleView(size_hint=(0.3, 1))
+        main_layout.add_widget(self.history_view)
+
+        # Chat and input layout
+        self.chat_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        main_layout.add_widget(self.chat_layout)
+
+        self.setup_chat_interface()
+        return main_layout
+
+    def setup_chat_interface(self):
         # Model selection dropdown
         self.model_selector = Spinner(
             text='Select Model',
             values=[model.value for model in ModelType],
             size_hint=(None, None),
-            size=(300, 44),  # Adjusted width to 300
-            pos_hint={'center_x': 0.5},  # Centered horizontally
+            size=(300, 44),
+            pos_hint={'center_x': 0.5},
         )
-        self.layout.add_widget(self.model_selector)
+        self.chat_layout.add_widget(self.model_selector)
 
-        # Chat display area (inside a scroll view)
+        # Chat display area
         self.chat_display_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=10)
         self.chat_display_layout.bind(minimum_height=self.chat_display_layout.setter('height'))
 
         self.chat_display = ScrollView(size_hint=(1, 1), do_scroll_x=False)
         self.chat_display.add_widget(self.chat_display_layout)
 
-        self.layout.add_widget(self.chat_display)
+        self.chat_layout.add_widget(self.chat_display)
 
         # User input area
         input_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=50)
@@ -65,7 +136,6 @@ class ChatApp(App):
         self.user_input = TextInput(size_hint_y=None, height=44, multiline=False)
         input_layout.add_widget(self.user_input)
 
-        # Send button with a specific size
         self.send_button = Button(
             background_normal=resource_path('images/send_icon.png'),
             size_hint=(None, None),
@@ -74,9 +144,19 @@ class ChatApp(App):
         self.send_button.bind(on_press=self.send_message)
         input_layout.add_widget(self.send_button)
 
-        self.layout.add_widget(input_layout)
+        self.chat_layout.add_widget(input_layout)
 
-        return self.layout
+    def update_history_list(self):
+        """Update the history list in the side panel."""
+        if self.chat_client:
+            self.history_view.data = [{'text': msg.content} for msg in self.chat_client.history.messages]
+
+    def load_conversation(self, conv_id):
+        """Load a conversation by its ID."""
+        self.chat_display_layout.clear_widgets()
+        for message in self.chat_client.history.messages:
+            user = message.role == Role.user
+            self.display_message(f"{'You' if user else 'AI'}: {message.content}", user=user)
 
     def send_message(self, instance):
         # Animate the send button
@@ -89,7 +169,34 @@ class ChatApp(App):
         if message.strip():
             self.display_message(f"You: {message}", user=True)
             self.user_input.text = ""
-            self.handle_chat_response(message)
+            
+            async def get_response():
+                try:
+                    # Initialize a SavedHistory object if not already done
+                    if not hasattr(self, 'saved_history'):
+                        self.saved_history = SavedHistory(model=self.chat_client.history.model)
+                    
+                    # Add user's message to the history
+                    self.saved_history.add_input(message)
+                    
+                    # Get the response from the AI
+                    response = await self.chat_client.ask_question(message)
+                    
+                    # Add AI's response to the history
+                    self.saved_history.add_answer(response)
+                    
+                    # Display the response
+                    self.display_message(f"AI: {response}", user=False)
+                    
+                    # Save the conversation history after each interaction
+                    self.saved_history.save()
+
+                except DuckChatException as e:
+                    self.display_message(f"Error: {str(e)}", user=False)
+            
+            # Run the async function in a separate thread
+            threading.Thread(target=lambda: self.loop.run_until_complete(get_response())).start()
+
 
     def display_message(self, message, user=False):
         Clock.schedule_once(lambda dt: self._add_message_to_display(message, user))
@@ -173,7 +280,11 @@ class ChatApp(App):
 
         try:
             model_type = ModelType(selected_model)
-            self.chat_client = DuckChat(model=model_type)
+            self.chat_client = DuckChat(model=model_type, session=aiohttp.ClientSession(loop=self.loop))
+            
+            # Load history and update the history list
+            self.update_history_list()
+
         except ValueError:
             self.display_message("Invalid model selected. Please select a valid model.", user=False)
 
@@ -192,22 +303,36 @@ class ChatApp(App):
         else:
             async def get_response():
                 try:
-                    await self.chat_client.init_session()
+                    # Initialize a SavedHistory object if not already done
+                    if not hasattr(self, 'saved_history'):
+                        self.saved_history = SavedHistory(model=self.chat_client.history.model)
+                    
+                    # Add user's message to the history
+                    self.saved_history.add_input(message)
+                    
+                    # Get the response from the AI
                     response = await self.chat_client.ask_question(message)
+                    
+                    # Add AI's response to the history
+                    self.saved_history.add_answer(response)
+                    
+                    # Display the response
                     self.display_message(f"AI: {response}", user=False)
+                    
+                    # Optionally, save the history after each response
+                    self.saved_history.save()
+
                 except DuckChatException as e:
                     self.display_message(f"Error: {str(e)}", user=False)
 
-            threading.Thread(target=lambda: self.loop.run_until_complete(get_response())).start()
+            threading.Thread(target=lambda: asyncio.run(get_response())).start()
 
     def on_stop(self):
         # This method is called when the application is closed.
         if self.chat_client:
-            asyncio.run(self.chat_client.close_session())  # Close the session asynchronously
+            self.loop.run_until_complete(self.chat_client.close_session())  # Close the session asynchronously
 
-        if self.loop.is_running():
-            self.loop.stop()
-            self.loop.close()
+        self.loop.close()
 
 if __name__ == "__main__":
     ChatApp().run()
