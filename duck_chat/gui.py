@@ -25,7 +25,7 @@ import sys
 import aiohttp
 import glob
 import logging
-from enum import Enum  # Importation correcte de l'énumération pour les modèles
+from enum import Enum
 
 # Modèles disponibles
 class ModelType(Enum):
@@ -161,12 +161,29 @@ class ChatApp(App):
         self.chat_client = None
 
         # Main layout with two panels: history and chat
-        main_layout = BoxLayout(orientation='vertical')
-        
-        # Create a container for the model selector and the error banner
-        self.selector_container = BoxLayout(orientation='vertical', size_hint=(1, None), height=dp(50))
+        main_layout = BoxLayout(orientation='horizontal')
 
-        # Model selection dropdown
+        # Left panel for saved history
+        left_panel = BoxLayout(orientation='vertical', size_hint=(0.3, 1))
+        
+        # Add "Saved History" header
+        header_label = Label(text="Saved History", size_hint=(1, None), height=dp(40), halign="center", valign="middle")
+        left_panel.add_widget(header_label)
+
+        # Initialize the list of saved conversation files
+        self.saved_history_files = load_saved_conversations(SAVE_DIR)
+
+        # Initialize HistoryRecycleView with the saved files
+        self.history_view = HistoryRecycleView(saved_history_files=self.saved_history_files, size_hint=(1, 1))
+        left_panel.add_widget(self.history_view)
+
+        # Add left panel to the main layout
+        main_layout.add_widget(left_panel)
+
+        # Right panel for chat interface
+        right_panel = BoxLayout(orientation='vertical', size_hint=(0.7, 1))
+
+        # Add model selector at the top
         self.model_selector = Spinner(
             text=ModelType.Llama.value,  # Llama selected by default
             values=[model.value for model in ModelType],
@@ -174,24 +191,16 @@ class ChatApp(App):
             size=(300, 44),
             pos_hint={'center_x': 0.5},
         )
-        self.selector_container.add_widget(self.model_selector)
-        main_layout.add_widget(self.selector_container)
-
-        # Initialize the list of saved conversation files
-        self.saved_history_files = load_saved_conversations(SAVE_DIR)
-        
-        # Initialize HistoryRecycleView with the saved files
-        self.history_view = HistoryRecycleView(saved_history_files=self.saved_history_files, size_hint=(1, 1))
-        main_layout.add_widget(self.history_view)
+        right_panel.add_widget(self.model_selector)
 
         # Chat and input layout
-        chat_layout = BoxLayout(orientation='horizontal')
         self.chat_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
-        chat_layout.add_widget(self.chat_layout)
+        right_panel.add_widget(self.chat_layout)
 
         self.setup_chat_interface()
 
-        main_layout.add_widget(chat_layout)
+        # Add right panel to the main layout
+        main_layout.add_widget(right_panel)
 
         # Initialize the chat client and then update the history list
         self.initialize_chat_client()
@@ -238,8 +247,8 @@ class ChatApp(App):
             close_button = Button(text="X", size_hint_x=0.1, on_release=self.dismiss_error)
             self.error_message_layout.add_widget(close_button)
 
-            # Add the error message layout above the model selector
-            self.selector_container.add_widget(self.error_message_layout, index=0)
+            # Add the error message layout above the chat display
+            self.chat_layout.add_widget(self.error_message_layout, index=0)
 
         self.error_message_label.text = message
         with self.error_message_layout.canvas.before:
@@ -251,7 +260,7 @@ class ChatApp(App):
     def dismiss_error(self, instance):
         """Dismiss the error banner and remove it from the layout"""
         if hasattr(self, 'error_message_layout'):
-            self.selector_container.remove_widget(self.error_message_layout)
+            self.chat_layout.remove_widget(self.error_message_layout)
             del self.error_message_layout  # Clean up the reference to allow garbage collection
 
     def load_conversation(self, conversation_path):
