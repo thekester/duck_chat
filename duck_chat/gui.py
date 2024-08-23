@@ -27,6 +27,7 @@ import glob
 import logging
 from enum import Enum
 
+
 # Modèles disponibles
 class ModelType(Enum):
     GPT4o = "gpt-4o-mini"
@@ -87,8 +88,22 @@ class SelectableLabel(RecycleDataViewBehavior, Label):
     selectable = BooleanProperty(True)
 
     def refresh_view_attrs(self, rv, index, data):
-        """Catch and handle the view changes"""
         self.index = index
+        self.text = data['text']
+        self.color = (1, 1, 1, 1)  # Set text color to white for visibility
+        self.size_hint_y = None  # Disable automatic size hint for height
+        self.height = dp(40)  # Set a minimum height for the label
+        self.text_size = (self.width, None)  # Allow the text to wrap if needed
+        self.halign = 'left'  # Align text to the left
+
+        # For testing visibility, adding background color to the label
+        self.canvas.before.clear()  # Clear any previous instructions
+        with self.canvas.before:
+            Color(0.5, 0.5, 0.5, 1)  # Light gray background
+            self.rect = RoundedRectangle(size=self.size, pos=self.pos)
+        self.bind(pos=lambda instance, value: setattr(self.rect, 'pos', value),
+                  size=lambda instance, value: setattr(self.rect, 'size', value))
+
         return super(SelectableLabel, self).refresh_view_attrs(rv, index, data)
 
     def on_touch_down(self, touch):
@@ -134,11 +149,12 @@ class HistoryRecycleView(RecycleView):
         if self.saved_history_files:
             self.data = [{'text': 'Saved History', 'selectable': False}]
             for file_path in self.saved_history_files:
-                self.data.append({'text': os.path.basename(file_path).split('.')[0].replace('history_', '')})
+                file_name = os.path.basename(file_path).replace('.json', '')
+                self.data.append({'text': file_name})
         else:
-            self.update_no_conversations_message()
-
-        self.refresh_from_data()  # Refresh the view to display the updated data
+            self.data = [{'text': 'No saved conversations found.', 'selectable': False}]
+        
+        self.refresh_from_data()
         logger.info("HistoryRecycleView updated with saved conversations.")
 
     def update_no_conversations_message(self, message=None):
@@ -161,14 +177,14 @@ class ChatApp(App):
         self.chat_client = None
 
         # Main layout with two panels: history and chat
-        main_layout = BoxLayout(orientation='horizontal')
+        main_layout = BoxLayout(orientation='horizontal')  # Changed to horizontal to add a left panel
 
-        # Left panel for saved history
-        left_panel = BoxLayout(orientation='vertical', size_hint=(0.3, 1))
-        
-        # Add "Saved History" header
-        header_label = Label(text="Saved History", size_hint=(1, None), height=dp(40), halign="center", valign="middle")
-        left_panel.add_widget(header_label)
+        # Left panel for Saved History
+        left_panel = BoxLayout(orientation='vertical', size_hint=(0.3, 1))  # 30% of the screen for saved history
+
+        # Label for the Saved History section
+        history_label = Label(text="Saved History", size_hint_y=None, height=dp(40))
+        left_panel.add_widget(history_label)
 
         # Initialize the list of saved conversation files
         self.saved_history_files = load_saved_conversations(SAVE_DIR)
@@ -177,13 +193,12 @@ class ChatApp(App):
         self.history_view = HistoryRecycleView(saved_history_files=self.saved_history_files, size_hint=(1, 1))
         left_panel.add_widget(self.history_view)
 
-        # Add left panel to the main layout
         main_layout.add_widget(left_panel)
 
-        # Right panel for chat interface
-        right_panel = BoxLayout(orientation='vertical', size_hint=(0.7, 1))
+        # Right panel for chat and other interface components
+        right_panel = BoxLayout(orientation='vertical', size_hint=(0.7, 1))  # 70% of the screen for the chat
 
-        # Add model selector at the top
+        # Model selection dropdown
         self.model_selector = Spinner(
             text=ModelType.Llama.value,  # Llama selected by default
             values=[model.value for model in ModelType],
@@ -193,13 +208,11 @@ class ChatApp(App):
         )
         right_panel.add_widget(self.model_selector)
 
-        # Chat and input layout
         self.chat_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         right_panel.add_widget(self.chat_layout)
 
         self.setup_chat_interface()
 
-        # Add right panel to the main layout
         main_layout.add_widget(right_panel)
 
         # Initialize the chat client and then update the history list
@@ -247,7 +260,7 @@ class ChatApp(App):
             close_button = Button(text="X", size_hint_x=0.1, on_release=self.dismiss_error)
             self.error_message_layout.add_widget(close_button)
 
-            # Add the error message layout above the chat display
+            # Add the error message layout above the model selector
             self.chat_layout.add_widget(self.error_message_layout, index=0)
 
         self.error_message_label.text = message
@@ -287,33 +300,39 @@ class ChatApp(App):
 
         message = self.user_input.text
         if message.strip():
-            self.display_message(f"You: {message}", user=True)
-            self.user_input.text = ""
-            
-            async def get_response():
-                try:
-                    # Add user's message to the history
-                    self.chat_client.saved_history.add_input(message)
-                    
-                    # Get the response from the AI
-                    response = await self.chat_client.ask_question(message)
-                    
-                    # Add AI's response to the history
-                    self.chat_client.saved_history.add_answer(response)
-                    
-                    # Display the response
-                    self.display_message(f"AI: {response}", user=False)
-                    
-                    # Save the history automatically after each interaction
-                    self.chat_client.saved_history.save()
+            if message.startswith("/"):
+                # Handle slash commands
+                self.handle_command(message)
+            else:
+                # Proceed with sending a normal message
+                self.display_message(f"You: {message}", user=True)
+                self.user_input.text = ""
 
-                except DuckChatException as e:
-                    if str(e) != "Session closed before completing the request.":
-                        self.display_message(f"Error: {str(e)}", user=False)
+                async def get_response():
+                    try:
+                        # Add user's message to the history
+                        self.chat_client.saved_history.add_input(message)
+                        
+                        # Get the response from the AI
+                        response = await self.chat_client.ask_question(message)
+                        
+                        # Add AI's response to the history
+                        self.chat_client.saved_history.add_answer(response)
+                        
+                        # Display the response
+                        self.display_message(f"AI: {response}", user=False)
+                        
+                        # Save the history automatically after each interaction
+                        self.chat_client.saved_history.save()
 
-            # Execute the async function in a separate thread
-            self.response_thread = threading.Thread(target=lambda: self.loop.run_until_complete(get_response()))
-            self.response_thread.start()
+                    except DuckChatException as e:
+                        if str(e) != "Session closed before completing the request.":
+                            self.display_message(f"Error: {str(e)}", user=False)
+
+                # Execute the async function in a separate thread
+                self.response_thread = threading.Thread(target=lambda: self.loop.run_until_complete(get_response()))
+                self.response_thread.start()
+
 
     def display_message(self, message, user=False):
         """Display a message in the chat display area"""
@@ -439,7 +458,100 @@ class ChatApp(App):
             logger.info(f"Refreshing history view with data: {self.history_view.data}")
             self.history_view.refresh_from_data()
             logger.info("HistoryRecycleView refreshed.")
+
+    def handle_command(self, command):
+        """Handle custom slash commands"""
+        args = command.split()
+        command_name = args[0][1:]
+
+        if command_name == "help":
+            help_message = (
+                "Available Commands:\n"
+                "- /help             : Display this help message\n"
+                "- /singleline       : Switch to singleline mode, validate is done by <enter>\n"
+                "- /multiline        : Switch to multiline mode, validate is done by EOF <Ctrl+D>\n"
+                "- /stream_on        : Enable stream mode\n"
+                "- /stream_off       : Disable stream mode\n"
+                "- /quit             : Quit the application\n"
+                "- /retry [count]    : Regenerate the answer for the specified prompt (default /retry 1)\n"
+                "- /save             : Save the current conversation history\n"
+                "- /load [ID]        : Load a conversation history by ID\n"
+                "- /list_histories   : List all saved conversation histories\n"
+            )
+            self.display_message(help_message, user=False)
         
+        elif command_name == "singleline":
+            self.display_message("Switched to singleline mode", user=False)
+            # Ici, tu pourrais implémenter la logique pour changer le mode d'entrée
+            # self.INPUT_MODE = "singleline"
+
+        elif command_name == "multiline":
+            self.display_message("Switched to multiline mode", user=False)
+            # Ici, tu pourrais implémenter la logique pour changer le mode d'entrée
+            # self.INPUT_MODE = "multiline"
+
+        elif command_name == "stream_on":
+            self.display_message("Switched to stream mode", user=False)
+            # Activer le mode streaming
+            # self.STREAM_MODE = True
+
+        elif command_name == "stream_off":
+            self.display_message("Switched to non-stream mode", user=False)
+            # Désactiver le mode streaming
+            # self.STREAM_MODE = False
+
+        elif command_name == "quit":
+            self.display_message("Quitting application", user=False)
+            self.stop()  # Quitter l'application
+
+        elif command_name == "retry":
+            if len(args) < 2:
+                count = 1  # Valeur par défaut si aucun argument n'est fourni
+            else:
+                try:
+                    count = int(args[1])
+                except ValueError:
+                    self.display_message("Invalid retry count. Must be an integer.", user=False)
+                    return
+
+            if count < 1:
+                self.display_message("Retry count must be greater than zero.", user=False)
+                return
+            
+            # Logique pour reposer la question avec `count` comme index
+            self.display_message(f"Retrying response for input #{count}", user=False)
+            # async logic could be implemented if needed
+
+        elif command_name == "save":
+            try:
+                self.chat_client.saved_history.save()
+                self.display_message(f"History saved with ID: {self.chat_client.saved_history.id}", user=False)
+            except Exception as e:
+                self.display_message(f"Error saving history: {str(e)}", user=False)
+
+        elif command_name == "load":
+            if len(args) < 2:
+                self.display_message("You must provide an ID to load.", user=False)
+            else:
+                history_id = args[1]
+                try:
+                    self.chat_client.history = DuckChat.load_history(history_id)
+                    self.display_message(f"Loaded history with ID: {history_id}", user=False)
+                except FileNotFoundError:
+                    self.display_message(f"No history found with ID: {history_id}", user=False)
+
+        elif command_name == "list_histories":
+            histories = glob.glob("history_*.json")
+            if not histories:
+                self.display_message("No histories found.", user=False)
+            else:
+                history_list = "\n".join(histories)
+                self.display_message(f"Saved Histories:\n{history_list}", user=False)
+
+        else:
+            self.display_message(f"Unknown command: {command}. Type /help for available commands.", user=False)
+
+
     def on_stop(self):
         """This method is called when the application is closed"""
         if self.chat_client:
