@@ -52,6 +52,7 @@ class DuckChat:
         )
         self.vqd: list[str] = []
         self.history = History(model=model, messages=[])  # Historique de la conversation actuelle
+        self.saved_history = SavedHistory(model=self.history.model)  # Initialisation unique
 
         self.__encoder = msgspec.json.Encoder()
         self.__decoder = msgspec.json.Decoder()
@@ -142,16 +143,26 @@ class DuckChat:
 
         self.vqd.append(response.headers.get("x-vqd-4", ""))
         return final_message
-
+    
     async def ask_question(self, query: str) -> str:
-        """Get answer from chat AI"""
         if not self.vqd:
             await self.get_vqd()
         self.history.add_input(query)
 
+        if self._session is None:
+            raise DuckChatException("Session closed before completing the request.")
+        
         message = await self.get_answer()
 
         self.history.add_answer(message)
+        
+        # Ajouter la question et la réponse à l'historique sauvegardé
+        self.saved_history.add_input(query)
+        self.saved_history.add_answer(message)
+        
+        # Sauvegarder automatiquement après chaque interaction
+        self.saved_history.save()
+
         return message
 
     async def reask_question(self, num: int) -> str:
@@ -263,6 +274,10 @@ class DuckChat:
         )
         
     async def close_session(self):
+        """Close the session and save the final history."""
+        # Sauvegarde finale de l'historique avant de fermer la session
+        self.saved_history.save()
+        
         if self._session is not None:
             await self._session.close()
-            self._session = None  # Reset the session to None after closing
+            self._session = None  # Reset the session to None after closin

@@ -52,14 +52,22 @@ class SavedHistory:
 
     def save(self) -> None:
         """Save the current conversation history to a file."""
-        file_path = f"history_{self.id}.json"
+        # Ensure that the savedhistory directory exists
+        save_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'savedhistory')
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+
+        file_path = os.path.join(save_dir, f"history_{self.id}.json")
         with open(file_path, 'w') as f:
             json.dump(self.to_dict(), f, indent=4)
 
     @staticmethod
     def load(history_id: str) -> 'SavedHistory':
         """Load a conversation history from a file."""
-        file_path = f"history_{history_id}.json"
+        # Ensure to load the file from the savedhistory directory
+        save_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'savedhistory')
+        file_path = os.path.join(save_dir, f"history_{history_id}.json")
+        
         if not os.path.exists(file_path):
             raise DuckChatException(f"No history found for ID {history_id}")
         
