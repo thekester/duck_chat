@@ -24,8 +24,8 @@ By using this client you accept [DuckDuckGo AI Chat ToS](https://duckduckgo.com/
 1. **Create a Conda environment**
 
    ```bash
-    conda create --name duck_chat_env python=3.10
-   conda activate duck_chat_env
+        conda create --name duck_chat_env python=3.12
+        conda activate duck_chat_env
    ```
 
    ```

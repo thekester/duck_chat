@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+name = "duck_chat"
+version = "0.1"
+packages = ["duck_chat"]
+include_package_data = true
+
+[tool.setuptools.package_data]
+"duck_chat" = ["*.txt", "*.md", "*.json", "*.png"]
+
+[tool.setuptools.entry_points]
+console_scripts = [
+    "duck_chat = duck_chat.cli:main"
+]
+
+[project]
+dependencies = [
+    "some_package",
+    "another_package"
+]

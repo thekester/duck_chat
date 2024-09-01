@@ -2,7 +2,7 @@ import argparse
 import asyncio
 import readline
 import sys
-import tomllib
+import toml
 from pathlib import Path
 import glob
 
@@ -197,12 +197,12 @@ class CLI:
     def read_model_from_conf(self) -> ModelType:
         filepath = Path.home() / ".config" / "hey" / "conf.toml"
         if filepath.exists():
-            with open(filepath, "rb") as f:
-                conf = tomllib.load(f)
+            with open(filepath, "r") as f:
+                conf = toml.load(f)
                 model_name = conf["model"]
             if model_name in (x.name for x in ModelType):
                 if model_name == "GPT3":
-                    print("\033[1;1m GPT3 is deprecated! Use GPT4o\033[0m")
+                    print("\033[1;1m GPT3 is deprecated! Use GPT4\033[0m")
                 return ModelType[model_name]
         return ModelType.Claude
 

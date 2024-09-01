@@ -17,32 +17,36 @@ from kivy.uix.behaviors import FocusBehavior
 from kivy.uix.recycleview.layout import LayoutSelectionBehavior
 from kivy.properties import BooleanProperty
 from kivy.metrics import dp
-from datetime import datetime, timedelta
-import asyncio
-import threading
 import os
-import sys
-import aiohttp
+import platform
 import glob
 import logging
 from enum import Enum
+import asyncio
+import threading
+import aiohttp
+from duck_chat.api import DuckChat, DuckChatException
+from .models.models import Role, SavedHistory, History
+import sys
+import datetime
+from datetime import timedelta
+
+# Importing MyWidget for file selection
+from .MyWidget import MyWidget
 
 
-# Modèles disponibles
+# Available Models
 class ModelType(Enum):
     GPT4o = "gpt-4o-mini"
     Claude = "claude-3-haiku-20240307"
     Llama = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
     Mixtral = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 
-from duck_chat.api import DuckChat, DuckChatException
-from .models.models import Role, SavedHistory, History
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Ensure the savedhistory directory exists
+# Ensure the saved history directory exists
 SAVE_DIR = os.path.join(os.path.dirname(__file__), '..', 'savedhistory')
 logger.info(f"Saving histories in directory: {os.path.abspath(SAVE_DIR)}")
 if not os.path.exists(SAVE_DIR):
@@ -62,7 +66,7 @@ def get_current_datetime(days_offset=0):
     return target_date.strftime("%Y-%m-%d %H:%M:%S")
 
 def load_saved_conversations(directory):
-    """Parcourir le dossier des conversations sauvegardées et retourner une liste de chemins de fichiers."""
+    """Browse the saved conversations folder and return a list of file paths."""
     logger.info(f"Welcome to load_saved_conversations")
 
     logger.info(f"Searching for saved conversations in directory: {directory}")
@@ -76,7 +80,7 @@ def load_saved_conversations(directory):
     for file in history_files:
         logger.info(f"Adding file to saved_history_files: {file}")
     
-    return history_files  # Retourne la liste des chemins des fichiers de conversation
+    return history_files  # Return the list of conversation file paths
 
 class SelectableRecycleBoxLayout(FocusBehavior, LayoutSelectionBehavior, RecycleBoxLayout):
     """Adds selection and focus behavior to the RecycleView's BoxLayout"""
@@ -119,8 +123,8 @@ class SelectableLabel(RecycleDataViewBehavior, Label):
         if is_selected:
             app = App.get_running_app()
             if index < len(app.saved_history_files):
-                conversation_path = app.saved_history_files[index]  # Récupère le chemin du fichier correspondant
-                app.load_conversation(conversation_path)  # Charge la conversation
+                conversation_path = app.saved_history_files[index]  # Retrieve the corresponding file path
+                app.load_conversation(conversation_path)  # Load the conversation
             else:
                 logger.error(f"Invalid index {index} for saved_history_files with length {len(app.saved_history_files)}")
 
@@ -175,6 +179,7 @@ class ChatApp(App):
 
         # Initialize chat client and interface components
         self.chat_client = None
+        self.selected_files = []  # Store selected files
 
         # Main layout with two panels: history and chat
         main_layout = BoxLayout(orientation='horizontal')  # Changed to horizontal to add a left panel
@@ -200,8 +205,8 @@ class ChatApp(App):
 
         # Model selection dropdown
         self.model_selector = Spinner(
-            text=ModelType.Llama.value,  # Llama selected by default
-            values=[model.value for model in ModelType],
+            text=ModelType.Llama.name,  # Llama selected by default
+            values=[model.name for model in ModelType],  # Use names here
             size_hint=(None, None),
             size=(300, 44),
             pos_hint={'center_x': 0.5},
@@ -210,6 +215,18 @@ class ChatApp(App):
 
         self.chat_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         right_panel.add_widget(self.chat_layout)
+
+        # File selection button
+        file_button = Button(text="Import Files", size_hint=(None, None), size=(150, 50))
+        file_button.bind(on_press=self.open_file_chooser)
+        right_panel.add_widget(file_button)
+
+        # Area to display selected files within a ScrollView
+        scroll_view = ScrollView(size_hint=(1, 0.2))
+        self.selected_files_layout = BoxLayout(orientation='vertical', padding=10, spacing=10, size_hint_y=None)
+        self.selected_files_layout.bind(minimum_height=self.selected_files_layout.setter('height'))
+        scroll_view.add_widget(self.selected_files_layout)
+        right_panel.add_widget(scroll_view)
 
         self.setup_chat_interface()
 
@@ -299,19 +316,31 @@ class ChatApp(App):
             self.initialize_chat_client()
 
         message = self.user_input.text
-        if message.strip():
+        if message.strip() or self.selected_files:
             if message.startswith("/"):
                 # Handle slash commands
                 self.handle_command(message)
             else:
                 # Proceed with sending a normal message
-                self.display_message(f"You: {message}", user=True)
+                if message.strip():
+                    self.display_message(f"You: {message}", user=True)
+                if self.selected_files:
+                    for file_path in self.selected_files:
+                        self.display_message(f"File attached: {os.path.basename(file_path)}", user=True)
+                
                 self.user_input.text = ""
 
                 async def get_response():
                     try:
-                        # Add user's message to the history
-                        self.chat_client.saved_history.add_input(message)
+                        # Add user's message and files to the history
+                        if message.strip():
+                            self.chat_client.saved_history.add_input(message)
+                        
+                        for file_path in self.selected_files:
+                            # Implement logic to read the file and process it
+                            with open(file_path, 'r') as f:
+                                file_content = f.read()  # This is an example for text files
+                            self.chat_client.saved_history.add_input(f"[FILE CONTENT]: {file_content}")
                         
                         # Get the response from the AI
                         response = await self.chat_client.ask_question(message)
@@ -333,6 +362,9 @@ class ChatApp(App):
                 self.response_thread = threading.Thread(target=lambda: self.loop.run_until_complete(get_response()))
                 self.response_thread.start()
 
+            # Clear selected files after sending
+            self.selected_files = []
+            self.update_selected_files_display()
 
     def display_message(self, message, user=False):
         """Display a message in the chat display area"""
@@ -418,7 +450,7 @@ class ChatApp(App):
             return
 
         try:
-            model_type = ModelType(selected_model)
+            model_type = ModelType[selected_model]
             self.chat_client = DuckChat(model=model_type, session=aiohttp.ClientSession(loop=self.loop))
             
             # Load history and update the history list
@@ -562,6 +594,30 @@ class ChatApp(App):
             self.chat_client.saved_history.save()
             self.loop.run_until_complete(self.chat_client.close_session())
         self.loop.close()
+
+    def open_file_chooser(self, instance):
+        """Open the file chooser using MyWidget."""
+        file_widget = MyWidget()
+        file_widget.open_file_chooser()
+
+        # Handle file selection in MyWidget (you can pass a callback to handle selections)
+        file_widget.load_selected_files = self.load_selected_files
+
+    def load_selected_files(self, selection, popup):
+        """Load the selected files and update the UI."""
+        popup.dismiss()
+        self.selected_files = selection
+        self.update_selected_files_display()
+
+    def update_selected_files_display(self):
+        """Update the display with the list of selected files."""
+        self.selected_files_layout.clear_widgets()
+        if self.selected_files:
+            for file_path in self.selected_files:
+                file_label = Label(text=os.path.basename(file_path), size_hint_y=None, height=dp(30))
+                self.selected_files_layout.add_widget(file_label)
+        else:
+            self.selected_files_layout.add_widget(Label(text="No files selected.", size_hint_y=None, height=dp(30)))
 
 
 if __name__ == "__main__":

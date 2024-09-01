@@ -1,0 +1,23 @@
+<MyWidget>:
+    cols: 1
+    id: my_widget
+
+    Button:
+        text: "Open File Chooser"
+        on_release: my_widget.open_file_chooser(self)
+
+    Image:
+        id: image
+        source: ""
+        allow_stretch: True
+        keep_ratio: True
+        size_hint_y: None
+        height: 300
+
+    ScrollView:
+        size_hint_y: None
+        height: 200
+        GridLayout:
+            id: selected_files_container
+            cols: 1
+            size_hint_y: None

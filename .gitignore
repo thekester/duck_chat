@@ -165,3 +165,10 @@ duck_chat/__pycache__
 duck_chat/build/
 duck_chat/dist/
 windows_exe/
+
+#Android APK
+bin/
+.buildozer/
+
+duck_chat/bin/
+duck_chat/.buildozer/

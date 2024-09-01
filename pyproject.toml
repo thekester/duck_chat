@@ -43,8 +43,8 @@ authors = [{ name = "MrGick", email = "mrgickcool@gmail.com" }]
 path = "duck_chat/__init__.py"
 
 [project.urls]
-Homepage = "https://github.com/mrgick/duckduckgo-chat-ai"
-Issues = "https://github.com/mrgick/duckduckgo-chat-ai/issues"
+Homepage = "https://github.com/thekester/duckduckgo-chat-ai"
+Issues = "https://github.com/thekester/duckduckgo-chat-ai/issues"
 
 [project.optional-dependencies]
 dev = [
